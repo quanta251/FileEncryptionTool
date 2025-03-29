@@ -20,30 +20,37 @@ func getData(path string) []byte {
 }
 
 func main() {
-	const key_size = 32
+	filepath := "./myfile.txt"
+	plaintext := getData(filepath)
+	fmt.Println("plaintext:", string(plaintext))
 
-	// Get the plaintext from the stored file.
-	plaintext := getData("./myfile.txt")
+	// Establish a key to use
+	key := make([]byte, 32)
+	io.ReadFull(rand.Reader, key)
+	fmt.Println("The key is now:", key)
 
-	// Generate the key for this encryption
-	key := make([]byte, key_size)
-	check, err := rand.Read(key)
-	if err != nil || check != key_size {
-		log.Fatal("Something went wrong:", err)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		log.Fatal("Could not create aes.NewCipher object:", err)
 	}
 
-	// Create the cipher block that will be used to encrypt the plaintext
 	ciphertext := make([]byte, aes.BlockSize+len(plaintext))
-	iv := ciphertext[:aes.BlockSize]
-	CipherBlock, err := aes.NewCipher(key)
 
+	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		panic(err)
+		log.Fatal("Could generate the IV:", err)
 	}
 
-	stream := cipher.NewCTR(CipherBlock, iv)
-	stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
+	// Create the Stream Cipher.
+	stream := cipher.NewCTR(block, iv)
+	stream.XORKeyStream(ciphertext, plaintext)
+	fmt.Println("ciphertext:", string(ciphertext))
 
-	fmt.Println("The new ciphertext is:", string(ciphertext))
+	plaintext2 := make([]byte, len(ciphertext))
+	stream = cipher.NewCTR(block, iv)
+	stream.XORKeyStream(plaintext2, ciphertext)
+
+	fmt.Println("The ciphertext generated is:", string(ciphertext))
+	fmt.Println("The plaintext generated is:", string(plaintext2))
 
 }
