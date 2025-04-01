@@ -10,6 +10,7 @@ import (
 )
  
 const aes_KEYSIZE = 32
+const bufferSize = 4096
 
 func getData(path string) []byte {
 	data, err := os.ReadFile(path)
@@ -21,67 +22,81 @@ func getData(path string) []byte {
 }
 
 func main() {
-	filepath := "./myfile.txt"
-	plaintext := getData(filepath)
-	fmt.Println("plaintext:", string(plaintext))
+  // Get the filename from the command line
+  var filename string = os.Args[1]
 
-	// Establish a key to use
+  // Make the key and generate random bytes
   key := make([]byte, aes_KEYSIZE)
   _, err := rand.Read(key)
   if err != nil {
-    log.Fatal("Could not generate a key:", err)
+    log.Fatalln("The key could not be generated:", err)
   }
 
-  // Make the cipher block that will be used
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		log.Fatal("Could not create aes.NewCipher object:", err)
-	}
-
-  // Make a buffer to store the ciphertext
-	ciphertext := make([]byte, aes.BlockSize+len(plaintext))
-
-  // Generate the Initialization Vector (IV)
+  // Create the Initilization Vectork (IV)
   iv := make([]byte, aes.BlockSize)
-	// if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-  if _, err := rand.Read(iv); err != nil {
-		log.Fatal("Could generate the IV:", err)
-	}
-
-  // Store the IV in the first part of the ciphertext
-  copy(ciphertext, iv)
-  fmt.Println("The ciphertext buffer just after copying the IV is:", ciphertext)
-
-	// Create the Stream Cipher.
-	stream := cipher.NewCTR(block, iv)
-  stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintext)
-	fmt.Println("ciphertext after encryption:", string(ciphertext))
-
-  //-------------------------------------------------------------------------------
-  //-------------------------------------------------------------------------------
-  //-------------------------------------------------------------------------------
-
-	plaintext2 := make([]byte, len(ciphertext) - aes.BlockSize)
-  ciphertext2 := make([]byte, len(ciphertext))
-  iv2 := make([]byte, aes.BlockSize)
-
-  // copy the ciphertext into the new buffer
-  copy(ciphertext2, ciphertext)
-
-  // Read the IV from the first part of the ciphertext
-  iv2 = ciphertext2[:aes.BlockSize]
-
-  block2, err := aes.NewCipher(key)
+  _, err = rand.Read(iv) 
   if err != nil {
-    log.Fatal("Could not create the second cipher block:", err)
+    log.Fatalln("The IV could not be generated:", err)
   }
 
-  stream2 := cipher.NewCTR(block2, iv2)
+  // Create the ciphertext and plaintext buffers
+  plainBuf  := make([]byte, bufferSize)
+  cipherBuf := make([]byte, bufferSize)
 
-  stream2.XORKeyStream(plaintext2, ciphertext2[aes.BlockSize:])
+  // Open the plaintext file
+  plaintextFile, err := os.Open(filename)
+  if err != nil {
+    log.Fatalln("Could not open the plaintext file:", err)
+  }
+  defer plaintextFile.Close()
 
-  fmt.Println("The decrypted plaintext is:", string(plaintext2), "\n\n\n")
-  fmt.Println("----------------------------------")
-  fmt.Println("Program finished")
-  fmt.Println("----------------------------------")
+  // Open the ciphertext file
+  ciphertextFile, err := os.Create(filename + ".enc")
+  if err != nil {
+    log.Fatalln("Could not open the ciphertext file:", err)
+  }
+  defer ciphertextFile.Close()
+
+  // Open a file to write the key then close it.
+  keyFile, err := os.Create(filename + ".key")
+  if err != nil {
+    log.Fatalln("Could not create the key file:", err)
+  }
+  bytesWritten, err := keyFile.Write(key)
+  if err != nil {
+    log.Fatalln("Could not write to the key file:", err)
+  }
+
+  // Write the IV at the start of the ciphertext file
+  bytesWritten, err = ciphertextFile.Write(iv)
+  if err != nil {
+    log.Fatalln("Could not write the IV to the ciphertext file", err)
+  }
+  _ = bytesWritten
+
+  // Create the block cipher
+  block, err := aes.NewCipher(key)
+  if err != nil {
+    log.Fatalln("Could not create new block cipher", err)
+  }
+
+  // Create a new stream cipher
+  stream := cipher.NewCTR(block, iv)
+
+  // Loop over the plaintext file, read into the plaintext buffer, encrypt into the ciphertext buffer, then
+  // write to the ciphertext file
+  for {
+    size, err := plaintextFile.Read(plainBuf)
+    if err != nil {
+      break
+    }
+
+    // Only want to encrypt UP TO the amount of data read from file. Hence, the [:size]
+    stream.XORKeyStream(cipherBuf, plainBuf[:size])
+
+    // Only want to write the bytes encrypted (up to [:size]), ignoring the rest of cipherBuf so we don't write leftover bytes.
+    ciphertextFile.Write(cipherBuf[:size])
+  }
+
+  fmt.Println("File encrypted!")
 }
