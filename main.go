@@ -12,18 +12,9 @@ import (
 const aes_KEYSIZE = 32
 const bufferSize = 4096
 
-func getData(path string) []byte {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatal("Could not open the file at:", path)
-	}
-
-	return data
-}
-
-func main() {
+func Encrypt() {
   // Get the filename from the command line
-  var filename string = os.Args[1]
+  var filename string = os.Args[2]
 
   // Make the key and generate random bytes
   key := make([]byte, aes_KEYSIZE)
@@ -32,7 +23,7 @@ func main() {
     log.Fatalln("The key could not be generated:", err)
   }
 
-  // Create the Initilization Vectork (IV)
+  // Create the Initilization Vector (IV)
   iv := make([]byte, aes.BlockSize)
   _, err = rand.Read(iv) 
   if err != nil {
@@ -53,7 +44,7 @@ func main() {
   // Open the ciphertext file
   ciphertextFile, err := os.Create(filename + ".enc")
   if err != nil {
-    log.Fatalln("Could not open the ciphertext file:", err)
+   log.Fatalln("Could not open the ciphertext file:", err)
   }
   defer ciphertextFile.Close()
 
@@ -86,17 +77,116 @@ func main() {
   // Loop over the plaintext file, read into the plaintext buffer, encrypt into the ciphertext buffer, then
   // write to the ciphertext file
   for {
-    size, err := plaintextFile.Read(plainBuf)
+    bytesRead, err := plaintextFile.Read(plainBuf)
     if err != nil {
+      // End of file has been reached if this is triggered
       break
     }
 
-    // Only want to encrypt UP TO the amount of data read from file. Hence, the [:size]
-    stream.XORKeyStream(cipherBuf, plainBuf[:size])
+    // Only want to encrypt UP TO the amount of data read from file. Hence, the [:bytesRead]
+    stream.XORKeyStream(cipherBuf, plainBuf[:bytesRead])
 
-    // Only want to write the bytes encrypted (up to [:size]), ignoring the rest of cipherBuf so we don't write leftover bytes.
-    ciphertextFile.Write(cipherBuf[:size])
+    // Only want to write the bytes encrypted (up to [:bytesRead]), ignoring the rest of cipherBuf so we don't write leftover bytes.
+    ciphertextFile.Write(cipherBuf[:bytesRead])
   }
 
   fmt.Println("File encrypted!")
+
+
+}
+
+func Decrypt() {
+  var ciphertextPath string = os.Args[2]
+  var keyPath string = os.Args[3]
+
+  // Open the ciphertext, plaintext, and key file streams
+  ciphertextFile, err := os.Open(ciphertextPath)
+  if err != nil {
+    log.Fatalln("Could not open the ciphertext file:", err)
+  }
+  defer ciphertextFile.Close()
+
+  plaintextFile, err := os.Create(ciphertextPath + ".plain")
+  if err != nil {
+    log.Fatalln("Could not create a plaintext file:", err)
+  }
+  defer plaintextFile.Close()
+
+  keyFile, err := os.Open(keyPath)
+  if err != nil {
+    log.Fatalln("Could not open the key file:", err)
+  }
+  defer keyFile.Close()
+
+  // Make the key slice and store the key bytes in it
+  key := make([]byte, aes_KEYSIZE)
+  _, err = keyFile.Read(key)
+  if err != nil {
+    log.Fatalln("Could not read the key file:", err)
+  }
+
+  // Read the Initilization Vector from the start of the ciphertext file
+  iv := make([]byte, aes.BlockSize)
+  _, err = ciphertextFile.Read(iv)
+  if err != nil {
+    log.Fatalln("Could not read the Initilization Vector", err)
+  }
+
+  // Create the cipher block
+  block, err := aes.NewCipher(key)
+  if err != nil {
+    log.Fatalln("Could not create new cipher block", err)
+  }
+
+  // Create new cipher stream
+  stream := cipher.NewCTR(block, iv)
+
+  // Create the ciphertext and plaintext buffers to store temporarily while looping
+  plainBuf := make([]byte, bufferSize)
+  cipherBuf := make([]byte, bufferSize)
+
+  // Loop over the ciphertext file stream until the end of file
+  for {
+    bytesRead, err := ciphertextFile.Read(cipherBuf)
+    if err != nil {
+      // End of file has been reached if this is triggered
+      break
+    }
+    
+    stream.XORKeyStream(plainBuf, cipherBuf[:bytesRead])
+
+    _, err = plaintextFile.Write(plainBuf[:bytesRead])
+    if err != nil {
+      log.Fatalln("Could not write data to the plaintext file:", err)
+    }
+  }
+  
+
+}
+
+func showHelp() {
+  fmt.Print(
+    "Usage: ./FileEncryptionTool [OPTIONS] <file-to-process> [key-file] \n\n",
+    "  Options:\n",
+    "\t'-d' or '--decrypt': Decrypt the file passed. If this option is chosen, then a key file should be passed to the program immediately after the data file.\n",
+    "\t'-e' or '--encrypt': Encrypt the file passed. A key will be generated, and a file with the '.key' suffix will be created. Keep that a secret.\n",
+    )
+}
+
+func main() {
+  // show the help menu if requested
+  for _, val := range os.Args {
+    if val == "-h" || val == "--help" {
+      showHelp()
+    }
+  }
+  
+  switch os.Args[1] {
+  case "-d":
+    Decrypt()
+  case "-e":
+    Encrypt()
+  default:
+    showHelp()
+  }
 }
