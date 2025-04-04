@@ -57,6 +57,8 @@ func Encrypt() {
 	if err != nil {
 		log.Fatalln("Could not write to the key file:", err)
 	}
+    _ = bytesWritten
+        
 
 	// Write the IV at the start of the ciphertext file
 	bytesWritten, err = ciphertextFile.Write(iv)
@@ -95,8 +97,8 @@ func Encrypt() {
 }
 
 func Decrypt() {
-	var ciphertextPath string = os.Args[2]
-	var keyPath string = os.Args[3]
+    ciphertextPath := os.Args[2]
+    keyPath := os.Args[3]
 
 	// Open the ciphertext, plaintext, and key file streams
 	ciphertextFile, err := os.Open(ciphertextPath)
@@ -104,6 +106,8 @@ func Decrypt() {
 		log.Fatalln("Could not open the ciphertext file:", err)
 	}
 	defer ciphertextFile.Close()
+
+
 
 	plaintextFile, err := os.Create(ciphertextPath + ".plain")
 	if err != nil {
